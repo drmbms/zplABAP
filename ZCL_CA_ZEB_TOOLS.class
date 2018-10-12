@@ -1,0 +1,460 @@
+***********************************************************************
+* Klasse            : ZCL_CA_ZEB_TOOLS
+* Description       : Label printing with Zebra Label Printers
+* Author            : Dietmar Ruhmann (DR), Martin Bauer Services
+* Date              : 05.03.2018
+*======================================================================
+* Package           : ZMB_CA
+*----------------------------------------------------------------------
+* History of Change
+* 05.03.2018 | DR         | initial created
+**********************************************************************
+class ZCL_CA_ZEB_TOOLS definition
+  public
+  create public .
+
+public section.
+
+  methods INIT
+    importing
+      !IF_DEVICE type RSPOLNAME
+      !IF_LENGTH type DZBD2P
+      !IF_WIDTH type DZBD2P
+      !IF_ROTATE type CHAR1
+    exceptions
+      INIT_ERROR .
+  methods PRINT_TEXT
+    importing
+      !IF_TEXT type AS4TEXT
+      !IF_X type DZBD2P
+      !IF_Y type DZBD2P
+      !IF_FONTID type CHAR1
+      !IF_FONTX type DZBD2P
+      !IF_FONTY type DZBD2P
+      !IF_ROTATE type CHAR1 .
+  methods PRINT_H_LINE
+    importing
+      !IF_X type DZBD2P
+      !IF_Y type DZBD2P
+      !IF_LEN type DZBD2P
+      !IF_WIDTH type DZBD2P .
+  methods PRINT_CODE_39
+    importing
+      !IF_TEXT type AS4TEXT
+      !IF_X type DZBD2P
+      !IF_Y type DZBD2P
+      !IF_ROTATE type CHAR1
+      !IF_CHECK type CHAR1
+      !IF_PRTVALUE type CHAR1
+      !IF_HEIGHT type DZBD2P
+      !IF_WIDTH type NUM2
+      !IF_WIDTHRATIO type CHAR3 .
+  methods PRINT
+    importing
+      !IF_COPY type NUM03
+      !IF_TITLE type RSPOTITLE .
+  PROTECTED SECTION.
+
+    DATA: gt_lines TYPE STANDARD TABLE OF string,
+          gs_lines LIKE LINE OF gt_lines.
+
+
+
+    DATA gf_device TYPE rspolname .
+    DATA gf_type TYPE char1.
+    DATA gf_dpi TYPE num4.
+    DATA gf_temp TYPE char2.
+    DATA gf_speed TYPE char2.
+    DATA gf_spra TYPE char1.
+    DATA gf_cutter TYPE char1.
+    DATA gf_zebinch TYPE p LENGTH 11 DECIMALS 3.
+
+    CONSTANTS gc_cm_inch TYPE p LENGTH 4 DECIMALS 3 VALUE '0.393'.
+ENDCLASS.
+
+
+
+CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_TOOLS->INIT
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_DEVICE                      TYPE        RSPOLNAME
+* | [--->] IF_LENGTH                      TYPE        DZBD2P
+* | [--->] IF_WIDTH                       TYPE        DZBD2P
+* | [--->] IF_ROTATE                      TYPE        CHAR1
+* | [EXC!] INIT_ERROR
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD init.
+
+    " todo table for printer controls
+    gf_device = !if_device.
+    gf_type = 'Z6M'.        " Printer type, only info
+    gf_dpi = 300.           " dots per inch
+    gf_temp = '2'.          " print density
+    gf_speed = '2'.         " print speed
+    gf_spra = 'Z'.          " Printer language Z=ZPL / E=EPL
+    gf_cutter = 'X'.        " Printer has cutter or not
+
+    DATA: lf_length TYPE num4,
+          lf_width  TYPE num4.
+
+    " All units of measure must be converted from cm to inch
+    gf_zebinch = gf_dpi * gc_cm_inch.
+    lf_length = !if_length * gf_zebinch.
+    SHIFT lf_length LEFT DELETING LEADING '0'.
+    lf_width = !if_width * gc_cm_inch.
+    SHIFT lf_width LEFT DELETING LEADING '0'.
+
+    CASE gf_spra.
+      " ZPL printer language
+      WHEN 'Z'.
+        APPEND '^XA' TO gt_lines.
+
+        " Rotation
+        IF !if_rotate = 'X'.
+          APPEND '^POI' TO gt_lines.
+        ELSE.
+          APPEND '^PON' TO gt_lines.
+        ENDIF.
+
+        " activate cutter
+        IF gf_cutter = 'X'.
+          APPEND '^MMC,N' TO gt_lines.
+        ENDIF.
+
+        " set label length
+        APPEND '^LL' && lf_length TO gt_lines.
+
+        " set speed
+        APPEND '^PR' && gf_speed TO gt_lines.
+
+        " set print density
+        APPEND '^MD' && gf_temp TO gt_lines.
+
+      "EPL printer language
+      WHEN 'E'.
+        APPEND 'I8,1,049' TO gt_lines.
+
+        " activate cutter
+        IF gf_cutter = 'X'.
+          APPEND 'OC' TO gt_lines.
+          APPEND 'f20' TO gt_lines.
+          APPEND 'Q50,0' TO gt_lines.
+        ELSE.
+          APPEND 'Q' && lf_length && ',24' TO gt_lines.
+        ENDIF.
+
+        " Reference point
+        APPEND 'R5,5' TO gt_lines.
+
+        " set label width
+        APPEND 'q' && lf_width TO gt_lines.
+
+        " Speed
+        APPEND 'S' && gf_speed TO gt_lines.
+
+        " Media Darkness
+        APPEND 'D' && gf_temp TO gt_lines.
+
+        " Clear buffer image
+        APPEND 'N' TO gt_lines.
+
+        " Rotation
+        IF !if_rotate = 'X'.
+          APPEND 'ZB' TO gt_lines.
+        ELSE.
+          APPEND 'ZT' TO gt_lines.
+        ENDIF.
+
+        " Top of Form
+        APPEND 'JF' TO gt_lines.
+
+      WHEN OTHERS.
+        RAISE init_error.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_TOOLS->PRINT
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_COPY                        TYPE        NUM03
+* | [--->] IF_TITLE                       TYPE        RSPOTITLE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD print.
+
+    DATA: lf_spoolhandle TYPE sy-tabix,
+          lf_spoolid     TYPE tsp01-rqident,
+          lf_copy        TYPE char3.
+
+    TYPES: BEGIN OF ts_lines,
+             line TYPE char80,
+           END OF ts_lines.
+    DATA: ls_lines TYPE ts_lines,
+          lt_lines TYPE STANDARD TABLE OF ts_lines.
+
+    FIELD-SYMBOLS:
+        <lf_line_tmp> TYPE string.
+
+    CASE gf_spra.
+      "ZPL printer language
+      WHEN 'Z'.
+
+        " copies
+        APPEND '^PQ' && !if_copy TO gt_lines.
+
+        " end
+        APPEND '^XZ' TO gt_lines.
+
+      "EPL printer language
+      WHEN 'E'.
+        lf_copy = !if_copy.
+        SHIFT lf_copy LEFT DELETING LEADING '0'.
+        APPEND 'P' && lf_copy TO gt_lines.
+
+    ENDCASE.
+
+
+
+** Create new spool job
+    CALL FUNCTION 'RSPO_SR_OPEN'
+      EXPORTING
+        dest             = gf_device
+        layout           = 'DINA4'
+        titleline        = !if_title
+        copies           = '1'
+        prio             = '1'
+        immediate_print  = ' '
+        auto_delete      = ' '
+        receiver         = sy-uname
+        doctype          = 'RAW'
+        archmode         = '1'
+      IMPORTING
+        handle           = lf_spoolhandle
+        spoolid          = lf_spoolid
+      EXCEPTIONS
+        device_missing   = 1
+        name_twice       = 2
+        no_such_device   = 3
+        operation_failed = 4
+        OTHERS           = 5.
+    IF sy-subrc <> 0.
+      EXIT.
+    ENDIF.
+
+** Write content to spool
+    LOOP AT gt_lines ASSIGNING <lf_line_tmp>.
+      ls_lines-line = <lf_line_tmp>.
+      APPEND ls_lines TO lt_lines.
+    ENDLOOP.
+
+    CALL FUNCTION 'RSPO_SR_TABLE_WRITE'
+      EXPORTING
+        handle           = lf_spoolhandle
+      TABLES
+        lines            = lt_lines
+      EXCEPTIONS
+        handle_not_valid = 1
+        operation_failed = 2.
+
+
+** Close spool
+    CALL FUNCTION 'RSPO_SR_CLOSE'
+      EXPORTING
+        handle           = lf_spoolhandle
+        pages            = 1
+        final            = 'X'
+      EXCEPTIONS
+        handle_not_valid = 1
+        operation_failed = 2
+        OTHERS           = 3.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_TOOLS->PRINT_CODE_39
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_TEXT                        TYPE        AS4TEXT
+* | [--->] IF_X                           TYPE        DZBD2P
+* | [--->] IF_Y                           TYPE        DZBD2P
+* | [--->] IF_ROTATE                      TYPE        CHAR1
+* | [--->] IF_CHECK                       TYPE        CHAR1
+* | [--->] IF_PRTVALUE                    TYPE        CHAR1
+* | [--->] IF_HEIGHT                      TYPE        DZBD2P
+* | [--->] IF_WIDTH                       TYPE        NUM2
+* | [--->] IF_WIDTHRATIO                  TYPE        CHAR3
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD print_code_39.
+
+    DATA: lf_x        TYPE num5,
+          lf_y        TYPE num5,
+          lf_height   TYPE num5,
+          lf_widthr   TYPE num5,
+          lf_width    TYPE num5,
+          lf_rotate   TYPE char1,
+          lf_prtvalue TYPE char1.
+
+    CASE gf_spra.
+      "ZPL printer language
+      WHEN 'Z'.
+
+        " Rotation (0=0° / 1=90° / 2=180° / 3=270°)
+        CASE !if_rotate.
+          WHEN '0'.
+            lf_rotate = 'N'.
+          WHEN '1'.
+            lf_rotate = 'R'.
+          WHEN '2'.
+            lf_rotate = 'I'.
+          WHEN '3'.
+            lf_rotate = 'B'.
+        ENDCASE.
+
+
+        " Convert from cm to dots per Inch
+        lf_x = !if_x * gf_zebinch.
+        SHIFT lf_x LEFT DELETING LEADING '0'.
+        lf_y = !if_y * gf_zebinch.
+        SHIFT lf_y LEFT DELETING LEADING '0'.
+        lf_height = !if_height * gf_zebinch.
+        SHIFT lf_height LEFT DELETING LEADING '0'.
+        lf_width = !if_width.
+        SHIFT lf_width LEFT DELETING LEADING '0'.
+
+        " Set position and draw barcode
+        APPEND '^FO' && lf_x && ',' && lf_y && '^BY' && lf_width && ',' && !if_widthratio && '^B3' &&
+        lf_rotate && ',' && !if_check && ',' && lf_height && ',' && !if_prtvalue && ',N' TO gt_lines.
+
+        APPEND '^FD' && !if_text && '^FS' TO gt_lines.
+
+      "EPL printer language
+      WHEN 'E'.
+
+        APPEND 'B' && lf_x && ',' && lf_y && ',' && !if_rotate && ',9,' && lf_width && ',' &&
+               !if_widthratio && ',' && lf_height && ',' && !if_prtvalue && ',"' && !if_text && '"'
+               to gt_lines.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_TOOLS->PRINT_H_LINE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_X                           TYPE        DZBD2P
+* | [--->] IF_Y                           TYPE        DZBD2P
+* | [--->] IF_LEN                         TYPE        DZBD2P
+* | [--->] IF_WIDTH                       TYPE        DZBD2P
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD print_h_line.
+
+    DATA: lf_x     TYPE num5,
+          lf_y     TYPE num5,
+          lf_len   TYPE num5,
+          lf_width TYPE num5.
+
+    CASE gf_spra.
+      WHEN 'Z'.
+
+        " Convert from cm to dots per Inch
+        lf_x = !if_x * gf_zebinch.
+        SHIFT lf_x LEFT DELETING LEADING '0'.
+        lf_y = !if_y * gf_zebinch.
+        SHIFT lf_y LEFT DELETING LEADING '0'.
+        lf_len = !if_len * gf_zebinch.
+        SHIFT lf_len LEFT DELETING LEADING '0'.
+        lf_width = !if_width * gf_zebinch.
+        SHIFT lf_width LEFT DELETING LEADING '0'.
+
+        " Set position and draw line
+        APPEND '^FO' && lf_x && ',' && lf_y && '^GB' && lf_len && ',0,' &&
+        lf_width && '^FS' TO gt_lines.
+
+
+      WHEN 'E'.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_TOOLS->PRINT_TEXT
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_TEXT                        TYPE        AS4TEXT
+* | [--->] IF_X                           TYPE        DZBD2P
+* | [--->] IF_Y                           TYPE        DZBD2P
+* | [--->] IF_FONTID                      TYPE        CHAR1
+* | [--->] IF_FONTX                       TYPE        DZBD2P
+* | [--->] IF_FONTY                       TYPE        DZBD2P
+* | [--->] IF_ROTATE                      TYPE        CHAR1
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD print_text.
+
+    DATA: lf_x     TYPE num5,
+          lf_y     TYPE num5,
+          lf_fontx TYPE num5,
+          lf_fonty TYPE num5,
+          lf_rot   TYPE char1.
+
+    CASE gf_spra.
+      WHEN 'Z'.
+
+        " Convert from cm to dots per Inch
+        lf_x = !if_x * gf_zebinch.
+        SHIFT lf_x LEFT DELETING LEADING '0'.
+        lf_y = !if_y * gf_zebinch.
+        SHIFT lf_y LEFT DELETING LEADING '0'.
+        lf_fontx = !if_fontx * gf_zebinch.
+        SHIFT lf_fontx LEFT DELETING LEADING '0'.
+        lf_fonty = !if_fonty * gf_zebinch.
+        SHIFT lf_fonty LEFT DELETING LEADING '0'.
+        CASE !if_rotate.
+          WHEN '0'.
+            lf_rot = 'N'.
+          WHEN '1'.
+            lf_rot = 'R'.
+          WHEN '2'.
+            lf_rot = 'I'.
+          WHEN '3'.
+            lf_rot = 'B'.
+          WHEN OTHERS.
+            lf_rot = 'N'.
+        ENDCASE.
+
+        " Set position
+        APPEND '^FT' && lf_x && ',' && lf_y && '^A' && !if_fontid && lf_rot && ',' &&
+                        lf_fontx && ',' && lf_fonty && '^FD' && !if_text && '^FS' TO gt_lines.
+
+        " Set text
+        " APPEND !if_text TO gt_lines.
+
+        " Set end sign of text
+        " APPEND '^FS' TO gt_lines.
+
+      WHEN 'E'.
+
+        lf_x = !if_x * gf_zebinch.
+        SHIFT lf_x LEFT DELETING LEADING '0'.
+        lf_y = !if_y * gf_zebinch.
+        SHIFT lf_y LEFT DELETING LEADING '0'.
+        lf_fontx = !if_fontx.
+        SHIFT lf_fontx LEFT DELETING LEADING '0'.
+        lf_fonty = !if_fonty.
+        SHIFT lf_fonty LEFT DELETING LEADING '0'.
+
+        " Set text
+        APPEND 'A' && lf_x && ',' && lf_y && ',' && !if_rotate && ',' &&
+               !if_fontid && ',' && lf_fontx && ',' && lf_fonty && ',N,' &&
+               '"' && !if_text && '"' TO gt_lines.
+
+    ENDCASE.
+
+  ENDMETHOD.
+ENDCLASS.
