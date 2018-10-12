@@ -1,4 +1,6 @@
+*"----------------------------------------------------------------------
 ***********************************************************************
+* Development       : Martin Bauer
 * Klasse            : ZCL_CA_ZEB_TOOLS
 * Description       : Label printing with Zebra Label Printers
 * Author            : Dietmar Ruhmann (DR), Martin Bauer Services
@@ -9,50 +11,50 @@
 * History of Change
 * 05.03.2018 | DR         | initial created
 **********************************************************************
-class ZCL_CA_ZEB_TOOLS definition
-  public
-  create public .
+CLASS zcl_ca_zeb_tools DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  methods INIT
-    importing
-      !IF_DEVICE type RSPOLNAME
-      !IF_LENGTH type DZBD2P
-      !IF_WIDTH type DZBD2P
-      !IF_ROTATE type CHAR1
-    exceptions
-      INIT_ERROR .
-  methods PRINT_TEXT
-    importing
-      !IF_TEXT type AS4TEXT
-      !IF_X type DZBD2P
-      !IF_Y type DZBD2P
-      !IF_FONTID type CHAR1
-      !IF_FONTX type DZBD2P
-      !IF_FONTY type DZBD2P
-      !IF_ROTATE type CHAR1 .
-  methods PRINT_H_LINE
-    importing
-      !IF_X type DZBD2P
-      !IF_Y type DZBD2P
-      !IF_LEN type DZBD2P
-      !IF_WIDTH type DZBD2P .
-  methods PRINT_CODE_39
-    importing
-      !IF_TEXT type AS4TEXT
-      !IF_X type DZBD2P
-      !IF_Y type DZBD2P
-      !IF_ROTATE type CHAR1
-      !IF_CHECK type CHAR1
-      !IF_PRTVALUE type CHAR1
-      !IF_HEIGHT type DZBD2P
-      !IF_WIDTH type NUM2
-      !IF_WIDTHRATIO type CHAR3 .
-  methods PRINT
-    importing
-      !IF_COPY type NUM03
-      !IF_TITLE type RSPOTITLE .
+    METHODS init
+      IMPORTING
+        !if_device TYPE rspolname
+        !if_length TYPE dzbd2p
+        !if_width  TYPE dzbd2p
+        !if_rotate TYPE char1
+      EXCEPTIONS
+        init_error .
+    METHODS print_text
+      IMPORTING
+        !if_text   TYPE as4text
+        !if_x      TYPE dzbd2p
+        !if_y      TYPE dzbd2p
+        !if_fontid TYPE char1
+        !if_fontx  TYPE dzbd2p
+        !if_fonty  TYPE dzbd2p
+        !if_rotate TYPE char1 .
+    METHODS print_h_line
+      IMPORTING
+        !if_x     TYPE dzbd2p
+        !if_y     TYPE dzbd2p
+        !if_len   TYPE dzbd2p
+        !if_width TYPE dzbd2p .
+    METHODS print_code_39
+      IMPORTING
+        !if_text       TYPE as4text
+        !if_x          TYPE dzbd2p
+        !if_y          TYPE dzbd2p
+        !if_rotate     TYPE char1
+        !if_check      TYPE char1
+        !if_prtvalue   TYPE char1
+        !if_height     TYPE dzbd2p
+        !if_width      TYPE num2
+        !if_widthratio TYPE char3 .
+    METHODS print
+      IMPORTING
+        !if_copy  TYPE num03
+        !if_title TYPE rspotitle .
   PROTECTED SECTION.
 
     DATA: gt_lines TYPE STANDARD TABLE OF string,
@@ -61,6 +63,7 @@ public section.
 
 
     DATA gf_device TYPE rspolname .
+    DATA gf_dest TYPE tsp01-rqdest.
     DATA gf_type TYPE char1.
     DATA gf_dpi TYPE num4.
     DATA gf_temp TYPE char2.
@@ -90,6 +93,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
 
     " todo table for printer controls
     gf_device = !if_device.
+    gf_dest = !if_device.
     gf_type = 'Z6M'.        " Printer type, only info
     gf_dpi = 300.           " dots per inch
     gf_temp = '2'.          " print density
@@ -108,7 +112,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
     SHIFT lf_width LEFT DELETING LEADING '0'.
 
     CASE gf_spra.
-      " ZPL printer language
+        " ZPL printer language
       WHEN 'Z'.
         APPEND '^XA' TO gt_lines.
 
@@ -133,7 +137,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
         " set print density
         APPEND '^MD' && gf_temp TO gt_lines.
 
-      "EPL printer language
+        "EPL printer language
       WHEN 'E'.
         APPEND 'I8,1,049' TO gt_lines.
 
@@ -201,7 +205,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
         <lf_line_tmp> TYPE string.
 
     CASE gf_spra.
-      "ZPL printer language
+        "ZPL printer language
       WHEN 'Z'.
 
         " copies
@@ -210,7 +214,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
         " end
         APPEND '^XZ' TO gt_lines.
 
-      "EPL printer language
+        "EPL printer language
       WHEN 'E'.
         lf_copy = !if_copy.
         SHIFT lf_copy LEFT DELETING LEADING '0'.
@@ -223,7 +227,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
 ** Create new spool job
     CALL FUNCTION 'RSPO_SR_OPEN'
       EXPORTING
-        dest             = gf_device
+        dest             = gf_dest
         layout           = 'DINA4'
         titleline        = !if_title
         copies           = '1'
@@ -300,7 +304,7 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
           lf_prtvalue TYPE char1.
 
     CASE gf_spra.
-      "ZPL printer language
+        "ZPL printer language
       WHEN 'Z'.
 
         " Rotation (0=0° / 1=90° / 2=180° / 3=270°)
@@ -332,12 +336,12 @@ CLASS ZCL_CA_ZEB_TOOLS IMPLEMENTATION.
 
         APPEND '^FD' && !if_text && '^FS' TO gt_lines.
 
-      "EPL printer language
+        "EPL printer language
       WHEN 'E'.
 
         APPEND 'B' && lf_x && ',' && lf_y && ',' && !if_rotate && ',9,' && lf_width && ',' &&
                !if_widthratio && ',' && lf_height && ',' && !if_prtvalue && ',"' && !if_text && '"'
-               to gt_lines.
+               TO gt_lines.
 
     ENDCASE.
 
