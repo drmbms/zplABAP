@@ -1,2 +1,2 @@
 # zplABAP
-Direct print to Zebra printers
+Direct print to Zebra printers from SAP
