@@ -1,0 +1,88 @@
+***********************************************************************
+* Development       : Martin Bauer
+* Klasse            : ZCL_CA_ZEB_TOOLS
+* Description       : Data collection for Zebra Tools
+* Author            : Dietmar Ruhmann (DR), Martin Bauer Services
+* Date              : 05.03.2018
+*======================================================================
+* Package           : ZMB_CA
+*----------------------------------------------------------------------
+* History of Change
+* 05.03.2018 | DR         | initial created
+**********************************************************************
+CLASS zcl_ca_zeb_data DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+
+    METHODS get_qm_data
+      IMPORTING
+        !if_phynr    TYPE qphysprnr
+      EXPORTING
+        !et_zeb_data TYPE zca_zeb_data_tt .
+  PROTECTED SECTION.
+
+
+    " tbd. reads
+    DATA gf_device TYPE rspolname .
+    DATA gf_dest TYPE rspopname.
+    DATA gf_type TYPE char1.
+    DATA gf_dpi TYPE num4.
+    DATA gf_temp TYPE char2.
+    DATA gf_speed TYPE char2.
+    DATA gf_spra TYPE char1.
+    DATA gf_cutter TYPE char1.
+    DATA gf_zebinch TYPE p LENGTH 11 DECIMALS 3.
+
+    CONSTANTS gc_cm_inch TYPE p LENGTH 4 DECIMALS 3 VALUE '0.393'.
+ENDCLASS.
+
+
+
+CLASS ZCL_CA_ZEB_DATA IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_CA_ZEB_DATA->GET_QM_DATA
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IF_PHYNR                       TYPE        QPHYSPRNR
+* | [<---] ET_ZEB_DATA                    TYPE        ZCA_ZEB_DATA_TT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_qm_data.
+
+
+    DATA: lf_phynr TYPE qphysprnr,
+          lf_plos  TYPE qplos,
+          lf_matnr TYPE matnr,
+          lf_charg TYPE charg_d,
+          lf_werks type werks_d.
+
+    DATA: gs_data TYPE zca_zeb_data.
+
+    lf_phynr = !if_phynr.
+
+    " Select field pool
+    SELECT SINGLE qprs~plos2, qals~matnr, qals~charg, qals~werk
+      FROM qprs
+    LEFT JOIN qals ON qprs~plos2 = qals~prueflos
+      WHERE qprs~phynr = @lf_phynr
+        INTO ( @lf_plos, @lf_matnr, @lf_charg, @lf_werks ).
+
+    " Set values to structure
+    gs_data-fieldname = 'PLOS'.
+    gs_data-ddtext = lf_plos.
+    APPEND gs_data TO !et_zeb_data .
+    gs_data-fieldname = 'MATNR'.
+    SHIFT lf_matnr LEFT DELETING LEADING '0'.
+    gs_data-ddtext = lf_matnr.
+    APPEND gs_data TO !et_zeb_data .
+    gs_data-fieldname = 'CHARG'.
+    gs_data-ddtext = lf_charg.
+    APPEND gs_data TO !et_zeb_data .
+    gs_data-fieldname = 'WERKS'.
+    gs_data-ddtext = lf_werks.
+    APPEND gs_data TO !et_zeb_data .
+
+  ENDMETHOD.
+ENDCLASS.
